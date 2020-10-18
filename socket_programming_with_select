@@ -1,0 +1,101 @@
+To refer code, please refer server.c file.
+
+This post explains the use of select system call in Socket programming. 
+I have written simple client and server where client sends some message to server and server just echo back the message. Lets call this server as "echo server".
+
+Points to notice in server side:
+
+1. Why select is needed first of all ?
+
+Assume the following scenario:
+
+Assume a client and server model here client takes input from stdin (using fgets() etc) and writes it on socket and then take the reply from server and prints on stderr.
+
+1. We start the server and client and type one line to the client to verify that all is okay. That line is echoed normally by the server child.
+
+2. We find the process ID of the server child and kill it. As part of process termination, all open descriptors in the child are closed. 
+   This causes a FIN to be sent to the client, and the client TCP responds with an ACK. This is the first half of the TCP connection termination.
+
+3.  The client TCP receives the FIN from the server TCP and responds with an ACK, but the problem is that the client process is blocked in the 
+    call to fgets waiting for a line from the terminal.
+    
+4. It gets the date from stdin and writes on socket. Remember, client can send the data on socket even if it receives the FIN on it. FIN here signifies that server 
+    has no more data to write. This is called half closed. 
+    
+5. When the server TCP receives the data from the client, it responds with an RST since the process that had that socket open has terminated.
+    The client process will not see the RST because it calls readline immediately after the call to writen and readline returns 0 (EOF)
+    immediately because of the FIN that was received in Step 2. Here client terminates. 
+
+In ideal case, client should have detected the FIN when it was blocked in fgets. This way, it would have been acted well on FIN and not send the data more.
+
+This example gives us the motivation to use something which can notify about socket when blocked on I/O. This is where select() comes. With select 
+application can get to know if some event happened on any fds and then act as required.
+
+NOTE: select can be used with any fds, not necessarily with socket fds.
+
+
+Another example where select can be useful is on server which can handle multiple clients. Server can maintain a list of fds to watch for client connection and fds for 
+incoming data.
+
+How server can achieve this ?
+
+Assume server only reads from the client socket and then writes back the same message.
+
+Server will have one fd_set which is read fdset and and one array containing all the fds to watch for. Please refer server.c for code.
+
+select takes following arguments
+
+1. nfds: This argument should be set to the highest-numbered file
+              descriptor in any of the three sets, plus 1
+              
+2. readfds =>  The file descriptors in this set are watched to see if they
+              are ready for reading
+           
+3. writefds
+              The file descriptors in this set are watched to see if they
+              are ready for writing.
+4.  exceptfds
+              The file descriptors in this set are watched for "exceptional
+              conditions". 
+5. timeout
+              The timeout argument is a timeval structure (shown below) that
+              specifies the interval that select() should block waiting for
+              a file descriptor to become ready.  The call will block until
+              either:
+
+              · a file descriptor becomes ready;
+
+              · the call is interrupted by a signal handler; or
+
+              · the timeout expires.
+ If timeout is specified as NULL, select() blocks indefinitely
+              waiting for a file descriptor to become ready.
+
+Issue with Select: 
+1. See nfd. This argument should be highest-numbered fd + 1. So suppose if we have only one fd to watch for and assume that is 902. 
+
+
+"""
+fd_set fds;
+FD_ZERO(&fds);
+FD_SET(902, &fds);
+select(903, &fds, NULL, NULL, NULL);
+"""
+
+Internally select does the following:
+for (int i = 0; i < 903; i++) {
+    if (readfds && readfds->check[i]) {
+        readfds->check[i] = check_readable(i);
+    }
+    if (writefds && writefds->check[i]) {
+        writefds->check[i] = check_writeable(i);
+    }
+    if (errorfds && errorfds->check[i]) {
+        errorfds->check[i] = check_errored(i);
+    }
+}
+
+In this case, since only fd 902 is actually being checked, it's looping over 903 entries which don't need to be checked. 
+
+2. In 32/64 bit system max fds allowable can be 1024/2048. (Depends on arch). But in versatile scenario, a server can communicate with thousands of fds.
+
