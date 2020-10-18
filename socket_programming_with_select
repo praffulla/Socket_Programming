@@ -99,3 +99,26 @@ In this case, since only fd 902 is actually being checked, it's looping over 903
 
 2. In 32/64 bit system max fds allowable can be 1024/2048. (Depends on arch). But in versatile scenario, a server can communicate with thousands of fds.
 
+Now what is the efficient way to handle this. 
+
+============================================================================ POLL =================================================================
+
+Poll can remove both the above mentioned disadvantages 
+
+1. Poll takes array of pollfd structures. pollfd structures contains following info:
+
+struct pollfd {
+  int     fd;       /* descriptor to check */
+  short   events;   /* events of interest on fd */
+  short   revents;  /* events that occurred on fd */
+};
+
+The conditions to be tested are specified by the events member and the function returns the status for that descriptor in the corresponding revents member.
+
+Suppose the fd we are interested in is 902. Now kernel need not to loop ovr from 1 to 902 to check read event. This makes server process more efficient.
+Also, here fd limit is limit of int so it can handle a large number of connections.
+
+Please find the code for server which uses poll instead of select() in server_poll.c file
+
+
+
