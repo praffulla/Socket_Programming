@@ -1,0 +1,45 @@
+1. TLS v1.2 is slow
+
+TLS 1.2 handshake needs two additional round trips before starting data exchange.
+in TLS 1.3 it takes one round trip time generally before starting data exchange. 
+
+In TLS 1.3 a client starts by sending not only the ClientHello and the list of supported ciphers
+, but it also makes a guess as to which key agreement algorithm the server will choose, and sends a key share for that.
+And that saves us a round trip, because as soon as the server selects the cipher suite and key agreement algorithm,
+ it's ready to generate the key, as it already has the client key share. So it can switch to encrypted packets one whole round-trip in advance.
+So the server sends the ServerHello, its key share, the certificate (now encrypted, since it has a key!), and already the Finished message.
+The client receives all that, generates the keys using the key share, checks the certificate and Finished, and it's immediately ready to send the HTTP request, after only one round-trip. Which can be hundreds of milliseconds.
+
+
+
+2. TLS v1.2 is less secure
+
+TLS v1.2 can use RSA key exchange. This does not provide "forward secret". That is if encrypted data is stored and in future private key of
+receiver is stolen, all previous data can be decrypted. 
+In TLS v1.3, only DH is the key-exchange mechanism.
+In Diffie hellman, not all DH parameters are safe to use. So TLS v1.3 allows Diffie hellman paramaters which are known to be secure.
+
+[Fixing Ciphers]:
+In TLS encryption is done by first generating MAC of data and then encrypt it. This ensures integrity, confidentiality and authentication. 
+But some ciphers combination like CBC-MAC makes it unsecure. In TLS 1.3, only AEAD (authenticated encryption with additional data) can be used,
+which combines encryption and integrity. example AES-GCM
+
+[Fixing Digital Signature]:
+In TLS v1.3 server signs the entire handshake including the cipher negotiation. This prevent from downgrade attack.
+
+[Simplifed cipher suites]: 
+In TLS 1.2 ciphersuites are like this:
+TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 
+
+TLS is the protocol
+ECDHE is the key exchange algorithm
+ECDSA is the authentication algorithm
+AES 128 GCM is the symmetric encryption algorithm
+SHA256 is the hashing algorithm. 
+
+In TLS v1.3 it is like
+TLS_AES_256_GCM_SHA384 
+Here we know that we are going to use some version of DH key exchange. 
+
+
+
